@@ -292,6 +292,11 @@ export class BrowserSession {
     }
   }
 
+  /** Wait for network idle (up to ms), then min(ms, 1500) ms for animations. No-op when ms <= 0. */
+  async settleFor(ms: number): Promise<void> {
+    if (this.page && !this.page.isClosed()) await settlePage(this.page, ms);
+  }
+
   /** Write the active context's Playwright storage state. False when no context is open. */
   async storageState(file: string): Promise<boolean> {
     if (!this.context) return false;
@@ -318,6 +323,12 @@ export class BrowserSession {
     if (!recorded || !existsSync(recorded) || statSync(recorded).size < 1000) return [];
     return [recorded];
   }
+}
+
+export async function settlePage(page: Pick<Page, "waitForLoadState" | "waitForTimeout">, ms: number): Promise<void> {
+  if (!(ms > 0)) return;
+  await page.waitForLoadState("networkidle", { timeout: ms }).catch(() => undefined);
+  await page.waitForTimeout(Math.min(ms, 1500)).catch(() => undefined);
 }
 
 /** Save the session's storage state before teardown; logs and skips when no context is open. */

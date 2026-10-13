@@ -169,6 +169,7 @@ export interface CaseResult {
   error?: string;
   goal?: string;
   plan?: TaskPlan;
+  settleMs?: number;
   steps: StepResult[];
 }
 

@@ -46,20 +46,39 @@ export class Agent {
   private predictedContent = "";
   private taskGoal = "";
   private doneWhen?: string;
+  private noPlan: boolean;
+  private settleMs: number;
 
   constructor(
     private session: BrowserSession,
     private writer: ReportWriter,
     private config: PilotConfig,
-    options: { provider?: DecisionProvider; script?: Record<string, unknown>[]; doneWhen?: string } = {},
+    options: {
+      provider?: DecisionProvider;
+      script?: Record<string, unknown>[];
+      doneWhen?: string;
+      /** Skip planTask; the plan is only { steps: [], doneWhen }. */
+      noPlan?: boolean;
+      /** Network-idle + animation wait after open and each action, before observing. 0 = off. */
+      settleMs?: number;
+    } = {},
   ) {
     this.provider = options.provider ?? createDecisionProvider(config, options.script);
     this.doneWhen = options.doneWhen?.trim() || undefined;
+    this.noPlan = Boolean(options.noPlan);
+    this.settleMs = options.settleMs && options.settleMs > 0 ? options.settleMs : 0;
+  }
+
+  /** Observe again after the page settles; returns the page as-is when settling is off. */
+  private async settled(page: PageState): Promise<PageState> {
+    if (!this.settleMs) return page;
+    await this.session.settleFor(this.settleMs);
+    return this.session.observe();
   }
 
   /** Plan before the browser opens the case, so the page does not sit idle. */
   async plan(url: string, goal: string): Promise<TaskPlan | undefined> {
-    if (this.provider instanceof ScriptedProvider) return undefined;
+    if (this.provider instanceof ScriptedProvider || this.noPlan) return undefined;
     this.knowledge = retrieveKnowledge({ url, goal });
     this.prepared = withDoneWhen(await planTask(goal, this.config, this.knowledge), this.doneWhen);
     return this.prepared;
@@ -73,15 +92,16 @@ export class Agent {
   ): Promise<{ result: CaseResult; history: Record<string, unknown>[] }> {
     if (!this.knowledge) this.knowledge = retrieveKnowledge({ url, goal });
     const plan = withDoneWhen(
-      this.provider instanceof ScriptedProvider ? undefined : (this.prepared ?? (await planTask(goal, this.config, this.knowledge))),
+      this.provider instanceof ScriptedProvider || this.noPlan ? undefined : (this.prepared ?? (await planTask(goal, this.config, this.knowledge))),
       this.doneWhen,
     );
     const guidedGoal = guideGoal(goal, plan, this.knowledge);
     const history: Record<string, unknown>[] = [];
     this.taskGoal = goal;
     const result = emptyCase({ id: caseId, name: goal.slice(0, 80) || caseId, source: "auto", goal, plan });
+    if (this.settleMs) result.settleMs = this.settleMs;
     const opening = this.session.url && this.session.url !== "about:blank" ? this.session.observe() : this.session.goto(url);
-    let page = await opening;
+    let page = await this.settled(await opening);
     const started = Date.now();
     let unchanged = 0;
     let sameContentSkips = 0;
@@ -181,6 +201,7 @@ export class Agent {
           continue;
         }
         const doneWhen = result.plan?.doneWhen;
+        if (doneWhen) page = await this.settled(page);
         const checked = doneWhen ? await this.checkDone(page, doneWhen) : { met: true };
         const met = checked.met;
         if (!met) {
@@ -441,6 +462,7 @@ export class Agent {
     if (!doneWhen) return false;
     let checked: { met: boolean; model?: string; modelMs?: number; modelUsage?: ModelUsage };
     try {
+      page = await this.settled(page);
       checked = await this.checkDone(page, doneWhen);
       if (!checked.met) return false;
     } catch {
@@ -568,6 +590,7 @@ export class Agent {
       await execute(this.session, page, target, kind, opts);
     }
     const actMs = elapsedMs(actStarted);
+    if (this.settleMs) await this.session.settleFor(this.settleMs);
     const next = await this.session.observe();
     const shot = this.writer.screenshots
       ? await timedScreenshot(this.session, target ? { node: target.node, label: actionMarkLabel(target) } : undefined)

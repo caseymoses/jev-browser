@@ -72,6 +72,8 @@ Commands:
   auto --url --goal             Goal-driven automation
                                 [--storage-state <file>] start from a Playwright storage state
                                 [--done-when <text>] force the plan's done condition
+                                [--no-plan] skip the planner (needs --done-when)
+                                [--settle-ms <n>] wait for network idle / animations before observing
   generate --url --goal         Compile YAML (and optional MD) from a run
   explore --url                 Coverage-oriented crawl
   knowledge-accept <draft>     Copy a failed-run knowledge draft into knowledge/
@@ -139,7 +141,7 @@ async function cmdObserve(url: string | undefined, config: PilotConfig, headed: 
   }
 }
 
-const BOOLEAN_FLAGS = new Set(["--headed", "--no-screenshots", "--help", "--md", "--verify", "--force", "-h"]);
+const BOOLEAN_FLAGS = new Set(["--headed", "--no-screenshots", "--help", "--md", "--verify", "--force", "--no-plan", "-h"]);
 
 export function fileArgs(argv: string[], command: string): string[] {
   const files: string[] = [];
@@ -219,6 +221,13 @@ async function cmdAuto(argv: string[], config: PilotConfig, screenshots: boolean
     console.error("auto needs --url and --goal");
     return 2;
   }
+  const doneWhen = flag(argv, "--done-when");
+  const noPlan = hasFlag(argv, "--no-plan");
+  if (noPlan && !doneWhen?.trim()) {
+    console.error("auto --no-plan needs --done-when");
+    return 2;
+  }
+  const settleMs = Number(flag(argv, "--settle-ms") ?? 0) || 0;
   const maxSteps = flag(argv, "--max-steps");
   if (maxSteps) config.maxSteps = Number(maxSteps);
   const started = utcNow();
@@ -236,7 +245,9 @@ async function cmdAuto(argv: string[], config: PilotConfig, screenshots: boolean
   const decisions = flag(argv, "--decisions");
   const agent = new Agent(session, writer, config, {
     script: decisions ? loadScript(decisions) : undefined,
-    doneWhen: flag(argv, "--done-when"),
+    doneWhen,
+    noPlan,
+    settleMs,
   });
   try {
     if (!decisions) await agent.plan(url, goal);

@@ -111,6 +111,10 @@ Local additions on the `hoppin` branch of the `caseymoses/jev-browser` fork.
   `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Add a beer' --storage-state .auth/venue.json`
 - `auto --done-when <text>` replaces the planner's done condition. With `--decisions` (no planning) it creates a step-less plan that carries only the condition, so the done check still runs. The condition is also in the goal the decision model sees.
   `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Add a beer' --done-when 'The tap list shows Pliny the Elder'`
+- `auto --no-plan` skips the planner (no planning model call) and uses `{ steps: [], doneWhen: <--done-when> }` as the plan. Exits 2 without `--done-when`. With only `TYPESAFE_API_KEY` set, decisions and the done check both go to Jev; no OpenAI key is needed.
+  `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Open a venue' --no-plan --done-when 'The venue tap list is visible'`
+- `auto --settle-ms <n>` (default 0, off) waits for `networkidle` up to n ms (timeout ignored), then a further min(n, 1500) ms, after the page opens, after every action, and before the done check. Helps SPAs that render after the first paint or after an animation. Recorded as `settleMs` on the case in `report.json`.
+  `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Open a venue' --settle-ms 2500`
 
 ## Layout
 
