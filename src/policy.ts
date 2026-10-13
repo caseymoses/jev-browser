@@ -325,11 +325,14 @@ export async function confirmDone(
 }
 
 export function guideGoal(goal: string, plan?: TaskPlan, notes = ""): string {
-  const body = plan
-    ? `${goal}
+  const steps = plan?.steps.length
+    ? `
 
 Planned steps:
-${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}
+${plan.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`
+    : "";
+  const body = plan
+    ? `${goal}${steps}
 
 Done only when this is visibly true: ${plan.doneWhen}
 Choose DONE only when that evidence is on the current page. Otherwise continue the next unfinished step.`

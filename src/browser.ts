@@ -292,6 +292,14 @@ export class BrowserSession {
     }
   }
 
+  /** Write the active context's Playwright storage state. False when no context is open. */
+  async storageState(file: string): Promise<boolean> {
+    if (!this.context) return false;
+    mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+    await this.context.storageState({ path: file });
+    return true;
+  }
+
   async close(): Promise<string[]> {
     const recorded = await this.recorder?.stop().catch(() => undefined);
     this.recorder = null;
@@ -310,6 +318,13 @@ export class BrowserSession {
     if (!recorded || !existsSync(recorded) || statSync(recorded).size < 1000) return [];
     return [recorded];
   }
+}
+
+/** Save the session's storage state before teardown; logs and skips when no context is open. */
+export async function saveStorageState(session: Pick<BrowserSession, "storageState">, file: string): Promise<boolean> {
+  const saved = await session.storageState(file);
+  console.error(saved ? `storage state ${path.resolve(file)}` : "storage state not saved: no browser context");
+  return saved;
 }
 
 function sameHeaders(left?: Record<string, string>, right?: Record<string, string>): boolean {

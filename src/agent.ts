@@ -25,6 +25,12 @@ export function finishAutoStatus(
   return { status: "blocked", error: error || `stopped at ${maxSteps} steps` };
 }
 
+/** Force the plan's done condition; with no plan, a step-less plan that only carries it. */
+export function withDoneWhen(plan: TaskPlan | undefined, doneWhen?: string): TaskPlan | undefined {
+  if (!doneWhen) return plan;
+  return plan ? { ...plan, doneWhen } : { steps: [], doneWhen };
+}
+
 export function loadScript(file: string): Record<string, unknown>[] {
   const raw = readFileSync(file, "utf8");
   const data = file.endsWith(".json") ? JSON.parse(raw) : parseYaml(raw);
@@ -39,21 +45,23 @@ export class Agent {
   private prepared?: TaskPlan;
   private predictedContent = "";
   private taskGoal = "";
+  private doneWhen?: string;
 
   constructor(
     private session: BrowserSession,
     private writer: ReportWriter,
     private config: PilotConfig,
-    options: { provider?: DecisionProvider; script?: Record<string, unknown>[] } = {},
+    options: { provider?: DecisionProvider; script?: Record<string, unknown>[]; doneWhen?: string } = {},
   ) {
     this.provider = options.provider ?? createDecisionProvider(config, options.script);
+    this.doneWhen = options.doneWhen?.trim() || undefined;
   }
 
   /** Plan before the browser opens the case, so the page does not sit idle. */
   async plan(url: string, goal: string): Promise<TaskPlan | undefined> {
     if (this.provider instanceof ScriptedProvider) return undefined;
     this.knowledge = retrieveKnowledge({ url, goal });
-    this.prepared = await planTask(goal, this.config, this.knowledge);
+    this.prepared = withDoneWhen(await planTask(goal, this.config, this.knowledge), this.doneWhen);
     return this.prepared;
   }
 
@@ -64,8 +72,10 @@ export class Agent {
     hooks: { onStep?: (result: CaseResult) => void } = {},
   ): Promise<{ result: CaseResult; history: Record<string, unknown>[] }> {
     if (!this.knowledge) this.knowledge = retrieveKnowledge({ url, goal });
-    const plan =
-      this.provider instanceof ScriptedProvider ? undefined : (this.prepared ?? (await planTask(goal, this.config, this.knowledge)));
+    const plan = withDoneWhen(
+      this.provider instanceof ScriptedProvider ? undefined : (this.prepared ?? (await planTask(goal, this.config, this.knowledge))),
+      this.doneWhen,
+    );
     const guidedGoal = guideGoal(goal, plan, this.knowledge);
     const history: Record<string, unknown>[] = [];
     this.taskGoal = goal;

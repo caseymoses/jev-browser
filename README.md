@@ -101,6 +101,17 @@ The window is visible by default. `browser.headless: true` hides it. `--headed` 
 
 Reports land in `reports/<run-id>/report.html`. `report.json` is the machine-readable copy. `report.md` is the short summary. A failing case exits non-zero.
 
+## Hoppin additions
+
+Local additions on the `hoppin` branch of the `caseymoses/jev-browser` fork.
+
+- `run --save-storage-state <file>` writes the browser context's Playwright storage state after the cases finish, pass or fail. Parent directories are created. Nothing is written when no context is open.
+  `npx codexqa-jev-browser run cases/login.yaml --save-storage-state .auth/venue.json`
+- `auto --storage-state <file>` starts the auto run in a context loaded from that storage state.
+  `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Add a beer' --storage-state .auth/venue.json`
+- `auto --done-when <text>` replaces the planner's done condition. With `--decisions` (no planning) it creates a step-less plan that carries only the condition, so the done check still runs. The condition is also in the goal the decision model sees.
+  `npx codexqa-jev-browser auto --url https://app.example.com --goal 'Add a beer' --done-when 'The tap list shows Pliny the Elder'`
+
 ## Layout
 
 ```text

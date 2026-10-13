@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { Agent, loadScript } from "./agent.js";
-import { BrowserSession } from "./browser.js";
+import { BrowserSession, saveStorageState } from "./browser.js";
 import { loadCases, readPlanTitle } from "./cases.js";
 import { applyCliOverrides, loadConfig, loadEnv } from "./config.js";
 import { explore } from "./explore.js";
@@ -68,7 +68,10 @@ Commands:
   install-browser               Download Cloak when CLOAKBROWSER_DOWNLOAD_URL and CLOAKBROWSER_SHA256 are set
   observe <url>                 Print the indexed element table
   run [files...]                Replay YAML / Markdown / API cases
+                                [--save-storage-state <file>] write the context's storage state at the end
   auto --url --goal             Goal-driven automation
+                                [--storage-state <file>] start from a Playwright storage state
+                                [--done-when <text>] force the plan's done condition
   generate --url --goal         Compile YAML (and optional MD) from a run
   explore --url                 Coverage-oriented crawl
   knowledge-accept <draft>     Copy a failed-run knowledge draft into knowledge/
@@ -157,7 +160,7 @@ export function fileArgs(argv: string[], command: string): string[] {
   return files;
 }
 
-function flag(argv: string[], name: string): string | undefined {
+export function flag(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
   if (index >= 0) return argv[index + 1];
   const prefixed = argv.find((item) => item.startsWith(`${name}=`));
@@ -176,6 +179,7 @@ async function cmdRun(
   headed: boolean,
 ): Promise<number> {
   const fromApi = flag(argv, "--from-api");
+  const saveState = flag(argv, "--save-storage-state");
   const plan = paths.length === 1 ? readPlanTitle(paths[0]) : undefined;
   const name = flag(argv, "--name") ?? plan ?? "CodexQA Jev Browser suite";
   const cases = await loadCases(paths, { fromApi, config });
@@ -202,6 +206,7 @@ async function cmdRun(
     const runner = new CaseRunner(session, writer);
     for (const item of cases) report.cases.push(await runner.runCase(item));
   } finally {
+    if (saveState) await saveStorageState(session, saveState).catch((error) => console.error(`storage state not saved: ${error}`));
     await keepRecording(session, writer, report);
   }
   return finish(writer, report);
@@ -227,9 +232,12 @@ async function cmdAuto(argv: string[], config: PilotConfig, screenshots: boolean
     startUrl: url,
     model: decisionModelLabel(config),
   });
-  const session = openSession(config, writer, { headed });
+  const session = openSession(config, writer, { headed, storageState: flag(argv, "--storage-state") });
   const decisions = flag(argv, "--decisions");
-  const agent = new Agent(session, writer, config, { script: decisions ? loadScript(decisions) : undefined });
+  const agent = new Agent(session, writer, config, {
+    script: decisions ? loadScript(decisions) : undefined,
+    doneWhen: flag(argv, "--done-when"),
+  });
   try {
     if (!decisions) await agent.plan(url, goal);
     await session.start(url);
