@@ -44,6 +44,7 @@ export class Agent {
   private knowledge = "";
   private prepared?: TaskPlan;
   private predictedContent = "";
+  private visitedUrls: string[] = []; // Hoppin fork: pages opened in this run, for multi-page done conditions
   private taskGoal = "";
   private doneWhen?: string;
   private noPlan: boolean;
@@ -103,6 +104,7 @@ export class Agent {
     const opening = this.session.url && this.session.url !== "about:blank" ? this.session.observe() : this.session.goto(url);
     let page = await this.settled(await opening);
     const started = Date.now();
+    this.visitedUrls = [];
     let unchanged = 0;
     let sameContentSkips = 0;
     let emptyFieldSkips = 0;
@@ -316,6 +318,7 @@ export class Agent {
         }
         emptyFieldSkips = 0;
         page = acted.page;
+        if (page.url && this.visitedUrls.at(-1) !== page.url) this.visitedUrls.push(page.url);
         history.push(acted.item);
         result.steps.push(
           await this.record(caseId, stepIndex, String(acted.item.op), page, {
@@ -486,7 +489,7 @@ export class Agent {
     page: PageState,
     doneWhen: string,
   ): Promise<{ met: boolean; model?: string; modelMs?: number; modelUsage?: ModelUsage }> {
-    if (this.config.model.typesafeApiKey) return jevConfirmDone(this.config, page, doneWhen);
+    if (this.config.model.typesafeApiKey) return jevConfirmDone(this.config, page, doneWhen, [...this.visitedUrls, page.url]);
     const started = performance.now();
     const met = await confirmDone(page, doneWhen, this.config);
     return { met, model: this.config.model.model, modelMs: elapsedMs(started) };
@@ -676,7 +679,10 @@ export class Agent {
       screenshotMs = elapsedMs(shotStarted);
     }
     const secret = isSecretControl(String(extra.matched?.name ?? ""));
-    const shouldAssert = extra.observeAfterMs != null && (extra.status ?? "pass") === "pass";
+    // Hoppin fork: a scroll that changes nothing means the page is already at its end; that
+    // satisfies a "scroll to the end" instruction instead of counting as a failed action.
+    const scrollAtEnd = op.startsWith("scroll") && extra.pageChanged === false;
+    const shouldAssert = extra.observeAfterMs != null && (extra.status ?? "pass") === "pass" && !scrollAtEnd;
     const judged =
       shouldAssert && !secret && this.provider instanceof JevProvider
         ? await jevAssert(this.config, {

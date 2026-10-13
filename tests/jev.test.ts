@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildJevRequest, createDecisionProvider, decisionModelLabel, JevProvider, jevAssert, jevConfirmDone, parseJevAnswers } from "../src/jev.js";
+import { buildDoneState, buildJevRequest, createDecisionProvider, decisionModelLabel, JevProvider, jevAssert, jevConfirmDone, parseJevAnswers } from "../src/jev.js";
 import { buildSpace, ScriptedProvider } from "../src/policy.js";
 import { defaultConfig } from "../src/config.js";
 import * as modelHttp from "../src/model-http.js";
@@ -201,6 +201,20 @@ describe("jev provider", () => {
     expect(checked.met).toBe(true);
     expect(checked.model).toBe("jev-1.13.0");
     expect(checked.reply).toContain("done: met");
+  });
+
+  it("lists the pages already visited for a multi-page done condition", () => {
+    const page = { url: "https://admin.example/portal/1/profile", title: "Profile", text: "x", elements: [] };
+    const single = buildDoneState(page, "the links Business Terms, EULA are visible", ["https://admin.example/portal/1/profile"]);
+    expect(single.visited_urls).toBeUndefined();
+    const multi = buildDoneState(page, "on every page the footer links are visible", [
+      "https://admin.example/portal/1", "https://admin.example/portal/1/team", "https://admin.example/portal/1/team",
+      "https://admin.example/portal/1/profile",
+    ]);
+    expect(multi.visited_urls).toEqual([
+      "https://admin.example/portal/1", "https://admin.example/portal/1/team", "https://admin.example/portal/1/profile",
+    ]);
+    expect(multi.done_when).toBe("on every page the footer links are visible");
   });
 
   it("offers a price control to Jev as a read target", () => {

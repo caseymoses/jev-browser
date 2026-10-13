@@ -398,21 +398,36 @@ The same place, date, or result may appear in another form, including inside the
 A results page for those facts is enough, even without the condition's exact words.
 If the URL or title already contains the places and dates in the condition, choose met.
 When the condition asks for a price, name, or other copied fact, choose met only if that fact is visible in the page text. A results URL alone does not show the price.
+When the condition speaks of several pages or steps, visited_urls lists the pages this run has already opened in order; count those as done and judge only what this page must show.
 Choose unmet only when the page is still an earlier step, or the route, date, or result contradicts the condition.`;
+
+/** The state Jev judges the done condition against. `visited` (Hoppin fork) lists the pages this
+ * run has already opened so a condition that spans several pages can be judged from the last one. */
+export function buildDoneState(
+  page: Pick<PageState, "url" | "title" | "text" | "elements">,
+  doneWhen: string,
+  visited?: string[],
+): Record<string, unknown> {
+  const state: Record<string, unknown> = {
+    done_when: doneWhen,
+    page: { ...briefPage(page), text: page.text.slice(0, 1500) },
+  };
+  const urls = (visited ?? []).filter((u, i, all) => u && all.indexOf(u) === i);
+  if (urls.length > 1) state.visited_urls = urls.slice(-20);
+  return state;
+}
 
 export async function jevConfirmDone(
   config: PilotConfig,
   page: Pick<PageState, "url" | "title" | "text" | "elements">,
   doneWhen: string,
+  visited?: string[],
 ): Promise<{ met: boolean; model?: string; modelMs: number; modelUsage?: ModelUsage; reply?: string }> {
   if (!config.model.typesafeApiKey) {
     throw new DecisionError("TYPESAFE_API_KEY is required for Jev done checks.");
   }
   const started = performance.now();
-  const state = {
-    done_when: doneWhen,
-    page: { ...briefPage(page), text: page.text.slice(0, 1500) },
-  };
+  const state = buildDoneState(page, doneWhen, visited);
   const response = await modelFetch(`${config.model.typesafeBaseUrl.replace(/\/$/, "")}/systemone`, {
     method: "POST",
     timeoutMs: config.model.timeoutMs,
