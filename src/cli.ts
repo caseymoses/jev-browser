@@ -238,6 +238,7 @@ async function cmdAuto(argv: string[], config: PilotConfig, screenshots: boolean
     mode: "auto",
     name: goal,
     startedAt: isoformat(started),
+    viewport: `${config.viewportWidth}x${config.viewportHeight}`,
     startUrl: url,
     model: decisionModelLabel(config),
   });
